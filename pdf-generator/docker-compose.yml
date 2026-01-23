@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  fiar360-pdf-generator:
+    build: .
+    container_name: fiar360-pdf-generator
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Pentru integrare cu fiar360 existenta, adauga in docker-compose.yml principal:
+#
+# services:
+#   fiar360-pdf-generator:
+#     build: ./pdf-generator
+#     container_name: fiar360-pdf-generator
+#     networks:
+#       - fiar360-network
+#     restart: unless-stopped
+#
+# Apoi din fiar360ro poti apela:
+# http://fiar360-pdf-generator:8000/api/v1/d112/generate
