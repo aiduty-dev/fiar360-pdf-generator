@@ -226,8 +226,11 @@ class D212ToXFAConverter:
 
 def generate_d212_pdf(xml_content: bytes, pdf_template_path: str, attach_xml: bool = True) -> bytes:
     """Genereaza PDF D212 completat din continutul XML.
-    Foloseste append pentru a pastra structura XFA originala.
+    Foloseste incremental updates pentru a pastra semnatura Adobe Reader Extensions (UR3)
+    care permite functionarea butonului 'VALIDEAZA FORMULARUL'.
     """
+    from .pdf_incremental import create_incremental_xfa_update
+
     converter = D212ToXFAConverter(xml_content)
     xfa_datasets = converter.generate_xfa_datasets()
 
@@ -235,49 +238,8 @@ def generate_d212_pdf(xml_content: bytes, pdf_template_path: str, attach_xml: bo
     with open(pdf_template_path, 'rb') as f:
         pdf_bytes = f.read()
 
-    # Folosim append pentru a pastra mai bine structura XFA
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    writer = PdfWriter()
+    # Folosim incremental update pentru a pastra semnatura UR3
+    # Datasets stream este object 5 in template-ul D212
+    result_pdf = create_incremental_xfa_update(pdf_bytes, xfa_datasets, datasets_obj_num=5)
 
-    # Append pastreaza mai bine referintele interne decat clone
-    writer.append(reader)
-
-    if '/AcroForm' in writer._root_object:
-        acroform = writer._root_object['/AcroForm']
-        if hasattr(acroform, 'get_object'):
-            acroform = acroform.get_object()
-
-        if '/XFA' in acroform:
-            xfa_array = acroform['/XFA']
-            if hasattr(xfa_array, 'get_object'):
-                xfa_array = xfa_array.get_object()
-
-            for i in range(0, len(xfa_array), 2):
-                name = str(xfa_array[i])
-                if name == 'datasets':
-                    stream_ref = xfa_array[i + 1]
-                    if hasattr(stream_ref, 'get_object'):
-                        stream_obj = stream_ref.get_object()
-                    else:
-                        stream_obj = stream_ref
-
-                    # Decode the stream first (required for EncodedStreamObject)
-                    _ = stream_obj.get_data()
-
-                    # Now update with our XFA data
-                    encoded_data = xfa_datasets.encode('utf-8')
-                    stream_obj.set_data(encoded_data)
-                    break
-
-    if attach_xml:
-        root = ET.fromstring(xml_content)
-        luna = root.get('luna_r', '00')
-        an = root.get('an_r', '0000')
-        attachment_name = f"D212_{an}_{luna}.xml"
-        writer.add_attachment(attachment_name, xml_content)
-
-    output_buffer = io.BytesIO()
-    writer.write(output_buffer)
-    output_buffer.seek(0)
-
-    return output_buffer.getvalue()
+    return result_pdf

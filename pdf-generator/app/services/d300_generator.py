@@ -144,37 +144,46 @@ class D300ToXFAConverter:
         xfa.append('<xfa:data>')
         xfa.append('<form1>')
 
-        # Butoane (lasam goale)
-        xfa.append('<btnDoc xfa:dataNode="dataGroup"/>')
+        # Butoane - structura conform XFA validat
+        xfa.append('<btnDoc>')
+        xfa.append('<btnSalt/>')
+        xfa.append('</btnDoc>')
 
-        # Antet
+        # Antet - structura conform XFA validat
         xfa.append('<Antet>')
         xfa.append('<IdDoc>')
         xfa.append(self.xml_tag('universalCode', 'D300_A11.0.7'))
         xfa.append(self.xml_tag('formValid', ''))
-        xfa.append(self.xml_tag('sgn', ''))
-        xfa.append(self.xml_tag('nr_evid', nr_evid))
         xfa.append('</IdDoc>')
 
-        # metaDate - structura necesara pentru validare JavaScript
-        xfa.append('<metaDate>')
-        xfa.append(self.xml_tag('luna_r', luna))
-        xfa.append(self.xml_tag('an_r', an))
-        xfa.append(self.xml_tag('d_rez', '0'))
-        xfa.append(self.xml_tag('d_rec', d_rec))
-        xfa.append(self.xml_tag('tipDecont', tip_decont))
-        xfa.append(self.xml_tag('totalPlata_A', totalPlata_A))
-        xfa.append('</metaDate>')
+        xfa.append('<NumeDoc>')
+        xfa.append('<Header xfa:dataNode="dataGroup"/>')
+        xfa.append('</NumeDoc>')
+
+        # nr_evid direct sub Antet, nu in IdDoc
+        xfa.append(self.xml_tag('nr_evid', nr_evid))
 
         xfa.append('<opInterne>')
         xfa.append(self.xml_tag('mtdSimplificata', bifa_interne))
         xfa.append('</opInterne>')
 
-        # Temei legal - obligatoriu pentru validare
-        xfa.append('<temeiLegal>')
-        xfa.append(self.xml_tag('a', temei_a))
-        xfa.append(self.xml_tag('b', temei_b))
-        xfa.append('</temeiLegal>')
+        # metaDate - ordinea conform XFA validat
+        xfa.append('<metaDate>')
+        xfa.append(self.xml_tag('an_r', an))
+        xfa.append(self.xml_tag('totalPlata_A', totalPlata_A))
+        xfa.append(self.xml_tag('tipDecont', tip_decont))
+        xfa.append(self.xml_tag('luna_r', luna))
+        xfa.append('<perioada>')
+        xfa.append('<dataInceput/>')
+        xfa.append('<dataSfarsit/>')
+        xfa.append('</perioada>')
+        xfa.append(self.xml_tag('d_rez', '0'))
+        xfa.append(self.xml_tag('d_scc', '0'))
+        xfa.append(self.xml_tag('d_rec', d_rec))
+        xfa.append('</metaDate>')
+
+        # Temei legal - gol conform formularului validat
+        xfa.append('<temeiLegal/>')
 
         xfa.append(self.xml_tag('cifS', ''))
         xfa.append(self.xml_tag('d_reprezentant', depus_repr))
@@ -215,166 +224,196 @@ class D300ToXFAConverter:
 
         xfa.append('<banca>')
         xfa.append(self.xml_tag('den', self.remove_diacritics(banca)))
-        xfa.append(self.xml_tag('iban', cont))
+        # Strip spaces from IBAN for validation (both regular and non-breaking)
+        iban_clean = cont.replace(' ', '').replace('\u00a0', '') if cont else ''
+        xfa.append(self.xml_tag('iban', iban_clean))
         xfa.append('</banca>')
 
-        xfa.append('<Caen>')
-        xfa.append(self.xml_tag('caen', caen))
-        xfa.append(self.xml_tag('caen1', ''))
-        xfa.append('</Caen>')
+        # CAEN - caen1 contine codul, Caen e doar container
+        xfa.append('<caen/>')
+        xfa.append(self.xml_tag('caen1', caen))
+        xfa.append('<Caen><Gap xfa:dataNode="dataGroup"/></Caen>')
 
-        # proRata direct sub identifCntr pentru validare
-        xfa.append(self.xml_tag('proRata', pro_rata))
-
-        xfa.append('<Gap xfa:dataNode="dataGroup"/>')
+        # proRata direct sub identifCntr - format cu zecimale
+        pro_rata_formatted = f"{float(pro_rata):.2f}" if pro_rata else "0.00"
+        xfa.append(self.xml_tag('proRata', pro_rata_formatted))
 
         xfa.append('</identifCntr>')
 
         # Date - sectiunile cu randuri
         xfa.append('<date>')
 
-        xfa.append('<headerColectata xfa:dataNode="dataGroup"/>')
-
-        # Comert
+        # Comert - r1 la r8 (cu subrânduri r3_1, r5_1, r7_1)
         xfa.append('<comert>')
-        for r in range(1, 9):
+        comert_rows = [1, 2, 3, '3_1', 4, 5, '5_1', 6, 7, '7_1', 8]
+        for r in comert_rows:
             xfa.append(f'<r{r}>')
-            xfa.append(self.xml_tag('nrCrt', str(r)))
-            xfa.append(self.xml_tag('c1', rows.get(f'R{r}_1', '')))
-            xfa.append(self.xml_tag('c2', rows.get(f'R{r}_2', '')))
-            xfa.append(self.xml_tag('c3', ''))
+            xfa.append(self.xml_tag('nrCrt', str(r).replace('_', '.')))
+            xfa.append(self.xml_tag('c1', ''))  # Descrierea e in template
+            xfa.append(self.xml_tag('c2', rows.get(f'R{str(r).replace("_", "")}_1', '')))
+            xfa.append(self.xml_tag('c3', rows.get(f'R{str(r).replace("_", "")}_2', '')))
             xfa.append(f'</r{r}>')
         xfa.append('</comert>')
 
-        # Livrari
+        # Livrari - r9 la r19 (cu subrânduri)
+        # r17 si r18 nu au c1 conform XFA validat
         xfa.append('<livrari>')
-        for r in range(9, 20):
+        livrari_rows = [9, '9_1', 10, '10_1', 11, '11_1', 12, '12_1', '12_2', '12_3', '12_4', '12_5', 13, 14, 15, 16, 17, 18, 19]
+        rows_without_c1 = [17, 18]
+        for r in livrari_rows:
+            r_key = str(r).replace('_', '')
             xfa.append(f'<r{r}>')
-            xfa.append(self.xml_tag('nrCrt', str(r)))
-            xfa.append(self.xml_tag('c1', rows.get(f'R{r}_1', '')))
-            xfa.append(self.xml_tag('c2', rows.get(f'R{r}_2', '')))
-            xfa.append(self.xml_tag('c3', ''))
+            xfa.append(self.xml_tag('nrCrt', str(r).replace('_', '.')))
+            if r not in rows_without_c1:
+                xfa.append(self.xml_tag('c1', ''))
+            xfa.append(self.xml_tag('c2', rows.get(f'R{r_key}_1', '')))
+            xfa.append(self.xml_tag('c3', rows.get(f'R{r_key}_2', '')))
             xfa.append(f'</r{r}>')
         xfa.append('</livrari>')
 
-        xfa.append('<headerDeductibil xfa:dataNode="dataGroup"/>')
-
-        # Achizitii RO
+        # Achizitii RO - r20 la r23 (cu subrânduri)
         xfa.append('<achizitiiRO>')
-        for r in range(20, 24):
+        achizitiiRO_rows = [20, '20_1', 21, 22, '22_1', 23]
+        for r in achizitiiRO_rows:
+            r_key = str(r).replace('_', '')
             xfa.append(f'<r{r}>')
-            xfa.append(self.xml_tag('nrCrt', str(r)))
-            xfa.append(self.xml_tag('c1', rows.get(f'R{r}_1', '')))
-            xfa.append(self.xml_tag('c2', rows.get(f'R{r}_2', '')))
-            xfa.append(self.xml_tag('c3', ''))
+            xfa.append(self.xml_tag('nrCrt', str(r).replace('_', '.')))
+            xfa.append(self.xml_tag('c1', ''))
+            xfa.append(self.xml_tag('c2', rows.get(f'R{r_key}_1', '')))
+            xfa.append(self.xml_tag('c3', rows.get(f'R{r_key}_2', '')))
             xfa.append(f'</r{r}>')
         xfa.append('</achizitiiRO>')
 
-        # Achizitii IMP
+        # Achizitii IMP - r24 la r36 (cu subrânduri) - acestea sunt obligatorii cu 0!
         xfa.append('<achizitiiIMP>')
-        for r in range(24, 30):
+        achizitiiIMP_rows = [
+            24, '24_1', 25, '25_1', 26,
+            27, '27_1', '27_2', '27_3', '27_4', '27_5',
+            28, 29, 30, '30_1', 31, 32, 33, 34, 35, 36
+        ]
+        # Rânduri care necesită valoare 0 implicit pentru validare
+        rows_need_zero = ['24', '241', '25', '251', '26', '30', '301', '31']
+        for r in achizitiiIMP_rows:
+            r_key = str(r).replace('_', '')
             xfa.append(f'<r{r}>')
-            xfa.append(self.xml_tag('nrCrt', str(r)))
-            xfa.append(self.xml_tag('c1', rows.get(f'R{r}_1', '')))
-            xfa.append(self.xml_tag('c2', rows.get(f'R{r}_2', '')))
-            xfa.append(self.xml_tag('c3', ''))
+            xfa.append(self.xml_tag('nrCrt', str(r).replace('_', '.')))
+            xfa.append(self.xml_tag('c1', ''))
+            # Pentru rândurile obligatorii, punem 0 dacă nu există valoare
+            c2_val = rows.get(f'R{r_key}_1', '')
+            c3_val = rows.get(f'R{r_key}_2', '')
+            if r_key in rows_need_zero:
+                c2_val = c2_val if c2_val else '0'
+                c3_val = c3_val if c3_val else '0'
+            xfa.append(self.xml_tag('c2', c2_val))
+            xfa.append(self.xml_tag('c3', c3_val))
             xfa.append(f'</r{r}>')
         xfa.append('</achizitiiIMP>')
 
-        # R30-R36
-        for r in range(30, 37):
-            xfa.append(f'<r{r}>')
-            xfa.append(self.xml_tag('nrCrt', str(r)))
-            xfa.append(self.xml_tag('c1', rows.get(f'R{r}_1', '')))
-            xfa.append(self.xml_tag('c2', rows.get(f'R{r}_2', '')))
-            xfa.append(self.xml_tag('c3', ''))
-            xfa.append(f'</r{r}>')
-
-        xfa.append('<headerRegularizari xfa:dataNode="dataGroup"/>')
-
-        # Regularizari
+        # Regularizari - r37 la r46
         xfa.append('<regularizari>')
         for r in range(37, 47):
             xfa.append(f'<r{r}>')
             xfa.append(self.xml_tag('nrCrt', str(r)))
-            xfa.append(self.xml_tag('c1', rows.get(f'R{r}_1', '')))
-            xfa.append(self.xml_tag('c2', rows.get(f'R{r}_2', '')))
-            xfa.append(self.xml_tag('c3', ''))
+            xfa.append(self.xml_tag('c1', ''))
+            # Regularizari folosesc c3 pentru valori, nu c2
+            xfa.append(self.xml_tag('c3', rows.get(f'R{r}_2', '')))
             xfa.append(f'</r{r}>')
         xfa.append('</regularizari>')
 
-        # Bife
+        # Bife - structura conform XFA validat
         xfa.append('<bife>')
-        xfa.append('<caption xfa:dataNode="dataGroup"/>')
-        xfa.append(self.xml_tag('cereale', '1' if bifa_cereale == 'D' else '0'))
-        xfa.append(self.xml_tag('mobil', '1' if bifa_mob == 'D' else '0'))
-        xfa.append(self.xml_tag('dispElec', '1' if bifa_disp == 'D' else '0'))
-        xfa.append(self.xml_tag('construc', '1' if bifa_cons == 'D' else '0'))
+        xfa.append('<caption>')
+        xfa.append(self.xml_tag('bifa_cereale', bifa_cereale))
+        xfa.append(self.xml_tag('bifa_mob', bifa_mob))
+        xfa.append(self.xml_tag('bifa_disp', bifa_disp))
+        xfa.append(self.xml_tag('bifa_cons', bifa_cons))
+        xfa.append('</caption>')
         xfa.append('</bife>')
 
-        # Rambursare
+        # Rambursare - bifa e in rambursare, r47-r49 sunt afara
         xfa.append('<rambursare>')
-        xfa.append('<header1 xfa:dataNode="dataGroup"/>')
-        xfa.append('<r47>')
-        xfa.append(self.xml_tag('nrCrt', '47'))
-        xfa.append(self.xml_tag('c1', '1' if solicit_ramb == 'D' else '0'))
-        xfa.append(self.xml_tag('c2', rows.get('R47_2', '')))
-        xfa.append('</r47>')
-        xfa.append('<header2 xfa:dataNode="dataGroup"/>')
-        xfa.append('<r48>')
-        xfa.append(self.xml_tag('nrCrt', '48'))
-        xfa.append(self.xml_tag('c1', rows.get('R48_1', '')))
-        xfa.append(self.xml_tag('c2', rows.get('R48_2', '')))
-        xfa.append('</r48>')
-        xfa.append('<header3 xfa:dataNode="dataGroup"/>')
-        xfa.append('<r49>')
-        xfa.append(self.xml_tag('nrCrt', '49'))
-        xfa.append(self.xml_tag('c1', rows.get('R49_1', '')))
-        xfa.append(self.xml_tag('c2', rows.get('R49_2', '')))
-        xfa.append('</r49>')
+        xfa.append(self.xml_tag('bifa_rambursare', solicit_ramb))
         xfa.append('</rambursare>')
+        xfa.append('<r47>')
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
+        xfa.append('</r47>')
+        xfa.append('<r48>')
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
+        xfa.append('</r48>')
+        xfa.append('<r49>')
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
+        xfa.append('</r49>')
 
-        xfa.append('<headerDeductibil xfa:dataNode="dataGroup"/>')
-
-        # Nedeductibil
+        # Nedeductibil - r50, r50_1, r60, r60_1
         xfa.append('<nedeductibil>')
         xfa.append('<r50>')
-        xfa.append(self.xml_tag('nrCrt', '50'))
-        xfa.append(self.xml_tag('c1', rows.get('R50_1', '')))
-        xfa.append(self.xml_tag('c2', rows.get('R50_2', '')))
+        xfa.append(self.xml_tag('nrCrt', 'A'))
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
         xfa.append('</r50>')
+        xfa.append('<r50_1>')
+        xfa.append(self.xml_tag('nrCrt', 'A1'))
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
+        xfa.append('</r50_1>')
         xfa.append('<r60>')
-        xfa.append(self.xml_tag('nrCrt', '60'))
-        xfa.append(self.xml_tag('c1', rows.get('R60_1', '')))
-        xfa.append(self.xml_tag('c2', rows.get('R60_2', '')))
+        xfa.append(self.xml_tag('nrCrt', 'B'))
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
         xfa.append('</r60>')
+        xfa.append('<r60_1>')
+        xfa.append(self.xml_tag('nrCrt', 'B1'))
+        xfa.append(self.xml_tag('c1', ''))
+        xfa.append(self.xml_tag('c2', ''))
+        xfa.append(self.xml_tag('c3', ''))
+        xfa.append('</r60_1>')
         xfa.append('</nedeductibil>')
 
-        xfa.append('<alteInfo xfa:dataNode="dataGroup"/>')
+        xfa.append('<alteInfo><r50><c1/><c2/></r50></alteInfo>')
 
         xfa.append('</date>')
 
-        # Semnatura
+        # Semnatura - ordinea conform XFA validat: prenume, nume, smnFnc
         xfa.append('<semnatura>')
-        xfa.append(self.xml_tag('nume', self.remove_diacritics(nume_declar)))
         xfa.append(self.xml_tag('prenume', self.remove_diacritics(prenume_declar)))
+        xfa.append(self.xml_tag('nume', self.remove_diacritics(nume_declar)))
         xfa.append(self.xml_tag('smnFnc', self.remove_diacritics(functie_declar)))
         xfa.append('</semnatura>')
 
-        xfa.append('<locOF xfa:dataNode="dataGroup"/>')
+        # locOF - structura conform XFA validat
+        xfa.append('<locOF>')
+        xfa.append('<TextField1/>')
+        xfa.append('<TextField2/>')
+        xfa.append('</locOF>')
 
         xfa.append('</form1>')
         xfa.append('</xfa:data>')
         xfa.append('</xfa:datasets>')
 
-        return ''.join(xfa)
+        # Formatare cu newlines ca in PDF-ul validat de Adobe
+        xfa_str = ''.join(xfa)
+        # Adaugam newline dupa fiecare tag inchis
+        xfa_str = xfa_str.replace('><', '>\n<')
+        return xfa_str
 
 
 def generate_d300_pdf(xml_content: bytes, pdf_template_path: str, attach_xml: bool = True) -> bytes:
     """
     Genereaza PDF D300 completat din continutul XML.
-    Foloseste append pentru a pastra structura XFA originala.
+    Foloseste incremental updates pentru a pastra semnatura Adobe Reader Extensions (UR3)
+    care permite functionarea butonului 'VALIDEAZA FORMULARUL'.
     """
+    from .pdf_incremental import create_incremental_xfa_update
+
     converter = D300ToXFAConverter(xml_content)
     xfa_datasets = converter.generate_xfa_datasets()
 
@@ -382,49 +421,12 @@ def generate_d300_pdf(xml_content: bytes, pdf_template_path: str, attach_xml: bo
     with open(pdf_template_path, 'rb') as f:
         pdf_bytes = f.read()
 
-    # Folosim append pentru a pastra mai bine structura XFA
-    reader = PdfReader(io.BytesIO(pdf_bytes))
-    writer = PdfWriter()
+    # Folosim incremental update pentru a pastra semnatura UR3
+    # Datasets stream este object 5 in template-ul D300
+    result_pdf = create_incremental_xfa_update(pdf_bytes, xfa_datasets, datasets_obj_num=5)
 
-    # Append pastreaza mai bine referintele interne decat clone
-    writer.append(reader)
+    # Nota: attach_xml nu mai functioneaza cu incremental updates
+    # deoarece ar necesita modificarea structurii PDF-ului
+    # XML-ul original poate fi trimis separat daca e necesar
 
-    if '/AcroForm' in writer._root_object:
-        acroform = writer._root_object['/AcroForm']
-        if hasattr(acroform, 'get_object'):
-            acroform = acroform.get_object()
-
-        if '/XFA' in acroform:
-            xfa_array = acroform['/XFA']
-            if hasattr(xfa_array, 'get_object'):
-                xfa_array = xfa_array.get_object()
-
-            for i in range(0, len(xfa_array), 2):
-                name = str(xfa_array[i])
-                if name == 'datasets':
-                    stream_ref = xfa_array[i + 1]
-                    if hasattr(stream_ref, 'get_object'):
-                        stream_obj = stream_ref.get_object()
-                    else:
-                        stream_obj = stream_ref
-
-                    # Decode the stream first (required for EncodedStreamObject)
-                    _ = stream_obj.get_data()
-
-                    # Now update with our XFA data
-                    encoded_data = xfa_datasets.encode('utf-8')
-                    stream_obj.set_data(encoded_data)
-                    break
-
-    if attach_xml:
-        root = ET.fromstring(xml_content)
-        luna = root.get('luna', '00')
-        an = root.get('an', '0000')
-        attachment_name = f"D300_{an}_{luna}.xml"
-        writer.add_attachment(attachment_name, xml_content)
-
-    output_buffer = io.BytesIO()
-    writer.write(output_buffer)
-    output_buffer.seek(0)
-
-    return output_buffer.getvalue()
+    return result_pdf
