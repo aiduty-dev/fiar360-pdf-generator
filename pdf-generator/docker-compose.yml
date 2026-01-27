@@ -1,28 +1,37 @@
-version: '3.8'
-
 services:
   fiar360-pdf-generator:
     build: .
+    image: fiar360-pdf-generator:latest
     container_name: fiar360-pdf-generator
     ports:
       - "8001:8000"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+    environment:
+      - TZ=Europe/Bucharest
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
-# Pentru integrare cu fiar360 existenta, adauga in docker-compose.yml principal:
+# Pentru integrare cu fiar360:
 #
 # services:
 #   fiar360-pdf-generator:
-#     build: ./pdf-generator
+#     image: fiar360-pdf-generator:latest
 #     container_name: fiar360-pdf-generator
 #     networks:
 #       - fiar360-network
 #     restart: unless-stopped
+#     environment:
+#       - TZ=Europe/Bucharest
 #
-# Apoi din fiar360ro poti apela:
-# http://fiar360-pdf-generator:8000/api/v1/d112/generate
+# Endpoint-uri disponibile:
+# - POST /api/v1/d112/generate
+# - POST /api/v1/d212/generate (via ANAF API)
+# - POST /api/v1/d300/generate
+# - POST /api/v1/d301/generate
+# - POST /api/v1/d390/generate
+# - POST /api/v1/d394/generate
+# - GET /health
