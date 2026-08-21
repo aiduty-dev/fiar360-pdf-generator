@@ -32,6 +32,13 @@ class ANAFToXFAConverter:
         """Initializeaza converterul cu continutul XML"""
         self.root = ET.fromstring(xml_content)
         self.ns = {'anaf': 'mfp:anaf:dgti:declaratie_unica:declaratie:v7'}
+        # 0726 (OpANAF 605/2026): formularul nou de la veniturile lunii iul-2026
+        try:
+            an = int(self.root.get('an_r', '0'))
+            luna = int(self.root.get('luna_r', '0'))
+        except ValueError:
+            an, luna = 0, 0
+        self.este_0726 = an > 2026 or (an == 2026 and luna >= 7)
 
     def get_attr(self, element, attr, default=''):
         if element is None:
@@ -129,7 +136,7 @@ class ANAFToXFAConverter:
 
         xfa.append('<sfmIdentif\n>')
         xfa.append(self.xml_tag('d_rec', d_rec))
-        xfa.append(self.xml_tag('tip_rec', ''))
+        xfa.append(self.xml_tag('tip_rec', self.get_attr(self.root, 'tip_rec', '')))
         xfa.append(self.xml_tag('d_rec0', d_rec))
         xfa.append(self.xml_tag('luna_r', luna_r))
         xfa.append(self.xml_tag('an_r', an_r))
@@ -197,6 +204,10 @@ class ANAFToXFAConverter:
         xfa.append(self.xml_tag('B_pensie', B_pensie))
         xfa.append(self.xml_tag('B1_brut_salarii', B_brutSalarii))
         xfa.append(self.xml_tag('B_sal', B_sal))
+        # 0726: agregatele beneficiarilor sumei de 200 (familia *_111)
+        if self.este_0726:
+            for f in ['nrSal1_111', 'nrSal2_111', 'nrSal3_111', 'bazaCAS_111', 'CAS_111']:
+                xfa.append(self.xml_tag(f, self.get_attr(angajatorB, f, '0')))
         xfa.append(self.xml_tag('T1', B_cnp))
         xfa.append(self.xml_tag('T4', B_sanatate))
         xfa.append(self.xml_tag('T2', '0'))
@@ -367,6 +378,12 @@ class ANAFToXFAConverter:
         Timp_E3 = self.get_attr(asig, 'Timp_E3', '0')
 
         asiguratA = self.find_element(asig, 'asiguratA')
+        # 0726 GrupB (salariat cu concediu medical): B1/B2/B3/B4 + D
+        asigB1 = self.find_element(asig, 'asiguratB1')
+        asigB2 = self.find_element(asig, 'asiguratB2')
+        asigB3 = self.find_element(asig, 'asiguratB3')
+        asigB4 = self.find_element(asig, 'asiguratB4')
+        asigD_list = self.find_all_elements(asig, 'asiguratD')
         A_1 = self.get_attr(asiguratA, 'A_1', '1')
         A_2 = self.get_attr(asiguratA, 'A_2', '0')
         A_3 = self.get_attr(asiguratA, 'A_3', 'N')
@@ -515,13 +532,13 @@ class ANAFToXFAConverter:
         xfa.append('<SbfrmSectiuneaB2\n>')
         for f in ['B2_1','B2_2','B2_3','B2_4','B2_5','B2_6','B2_7',
                   'B2_5P','B2_5S','B2_5C','B2_6P','B2_6S','B2_6C','B2_7P','B2_7S','B2_7C']:
-            xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag(f, self.get_attr(asigB2, f, '0')))
         xfa.append('</SbfrmSectiuneaB2\n>')
 
         xfa.append('<sbfrmSectiuneaB3\n>')
         for f in ['B3_1','B3_2','B3_3','B3_4','B3_5','B3_6','B3_7','B3_8','B3_9',
                   'B3_10','B3_11','B3_12','B3_13','B3_6a']:
-            xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag(f, self.get_attr(asigB3, f, '0')))
         xfa.append(self.xml_tag('B3_7S', ''))
         xfa.append(self.xml_tag('B3_7C', '0'))
         xfa.append(self.xml_tag('B3_CMS', '0'))
@@ -529,7 +546,7 @@ class ANAFToXFAConverter:
 
         xfa.append('<sbfrmSectiuneaB4\n>')
         for f in ['B4_1','B4_2','B4_3','B4_5','B4_6','B4_7','B4_8','B4_14']:
-            xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag(f, self.get_attr(asigB4, f, '0')))
         if asigExc == '2':
             xfa.append(self.xml_tag('B4_7P', A_13P))
             xfa.append(self.xml_tag('B4_8P', A_14P))
@@ -561,18 +578,20 @@ class ANAFToXFAConverter:
         xfa.append('<sbfrmSectiuneaB1rep\n>')
         xfa.append('<sbfrmSectiuneaB1\n>')
         xfa.append(self.xml_tag('tfNrCrt', '1'))
-        xfa.append(self.xml_tag('B1_1', '1'))
-        for f in ['VB_B','tichete1_B','tichete2_B','tichete3_B','B1_sal1','B1_sal2','B1_2']:
+        xfa.append(self.xml_tag('B1_1', self.get_attr(asigB1, 'B1_1', '1')))
+        for f in ['VB_B','tichete1_B','tichete2_B','tichete3_B']:
             xfa.append(self.xml_tag(f, '0'))
-        xfa.append(self.xml_tag('B1_3', 'N'))
-        xfa.append(self.xml_tag('B1_4', '8'))
-        xfa.append(self.xml_tag('B1_6', ''))
+        for f in ['B1_sal1','B1_sal2','B1_2']:
+            xfa.append(self.xml_tag(f, self.get_attr(asigB1, f, '0')))
+        xfa.append(self.xml_tag('B1_3', self.get_attr(asigB1, 'B1_3', 'N')))
+        xfa.append(self.xml_tag('B1_4', self.get_attr(asigB1, 'B1_4', '8')))
+        xfa.append(self.xml_tag('B1_6', self.get_attr(asigB1, 'B1_6', '')))
         xfa.append(self.xml_tag('B1_7', ''))
         for f in ['B1_8','B1_15']:
             xfa.append(self.xml_tag(f, '0'))
         xfa.append(self.xml_tag('B1_15n', ''))
         for f in ['B1_9','B1_5','B1_10']:
-            xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag(f, self.get_attr(asigB1, f, '0')))
         xfa.append(self.xml_tag('B1_16', ''))
         xfa.append(self.xml_tag('B1_18', '0'))
         xfa.append(self.xml_tag('B1_17', ''))
@@ -597,21 +616,41 @@ class ANAFToXFAConverter:
 
         xfa.append('<sbfrmSectiuneaD\n>')
         xfa.append('<sfmButoane\n/>')
-        xfa.append('<sbfrmSectiuneaDrep\n>')
-        xfa.append(self.xml_tag('tfNrCrt', '1'))
-        for f in ['Data_CMI','D_1','D_2','D_3','D_4','D_5','D_6','D_7','D_8','D_8a',
-                  'D_9','D_10','D_11','D_12','D_13']:
-            xfa.append(self.xml_tag(f, ''))
-        for f in ['D_14','D_15','D_16','D_17','D_18']:
-            xfa.append(self.xml_tag(f, '0'))
-        xfa.append(self.xml_tag('D_19', ''))
-        for f in ['D_20','D_21']:
-            xfa.append(self.xml_tag(f, '0'))
-        xfa.append(self.xml_tag('D_23', ''))
-        for f in ['D_24','D_25','D_26','D_27']:
-            xfa.append(self.xml_tag(f, '0'))
-        xfa.append(self.xml_tag('D_28', ''))
-        xfa.append('</sbfrmSectiuneaDrep\n>')
+        if asigD_list:
+            # 0726: certificatele reale din XML (inclusiv perechile de zile
+            # totale/platite D_14a/15a/16a)
+            for idx, dEl in enumerate(asigD_list, start=1):
+                xfa.append('<sbfrmSectiuneaDrep\n>')
+                xfa.append(self.xml_tag('tfNrCrt', str(idx)))
+                for f in ['Data_CMI','D_1','D_2','D_3','D_4','D_5','D_6','D_7','D_8','D_8a',
+                          'D_9','D_10','D_11','D_12','D_13']:
+                    xfa.append(self.xml_tag(f, self.get_attr(dEl, f, '')))
+                for f in ['D_14a','D_14','D_15a','D_15','D_16a','D_16','D_17','D_18']:
+                    xfa.append(self.xml_tag(f, self.get_attr(dEl, f, '0')))
+                xfa.append(self.xml_tag('D_19', self.get_attr(dEl, 'D_19', '')))
+                for f in ['D_20','D_20a','D_21','D_21a']:
+                    xfa.append(self.xml_tag(f, self.get_attr(dEl, f, '0')))
+                xfa.append(self.xml_tag('D_23', self.get_attr(dEl, 'D_23', '')))
+                for f in ['D_24','D_25','D_26','D_27']:
+                    xfa.append(self.xml_tag(f, '0'))
+                xfa.append(self.xml_tag('D_28', self.get_attr(dEl, 'D_28', '')))
+                xfa.append('</sbfrmSectiuneaDrep\n>')
+        else:
+            xfa.append('<sbfrmSectiuneaDrep\n>')
+            xfa.append(self.xml_tag('tfNrCrt', '1'))
+            for f in ['Data_CMI','D_1','D_2','D_3','D_4','D_5','D_6','D_7','D_8','D_8a',
+                      'D_9','D_10','D_11','D_12','D_13']:
+                xfa.append(self.xml_tag(f, ''))
+            for f in ['D_14','D_15','D_16','D_17','D_18']:
+                xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag('D_19', ''))
+            for f in ['D_20','D_21']:
+                xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag('D_23', ''))
+            for f in ['D_24','D_25','D_26','D_27']:
+                xfa.append(self.xml_tag(f, '0'))
+            xfa.append(self.xml_tag('D_28', ''))
+            xfa.append('</sbfrmSectiuneaDrep\n>')
         xfa.append('</sbfrmSectiuneaD\n>')
 
         xfa.append('<sfmButoane\n>')
@@ -623,9 +662,14 @@ class ANAFToXFAConverter:
         xfa.append(self.xml_tag('rbB', '0'))
         xfa.append(self.xml_tag('rbA', '1'))
         xfa.append('</rbl2\n>')
-        xfa.append(self.xml_tag('sal1', '4050'))
-        xfa.append(self.xml_tag('Sdimin', '300'))
-        xfa.append(self.xml_tag('sal2', '4300'))
+        if self.este_0726:
+            xfa.append(self.xml_tag('sal1', '4325'))
+            xfa.append(self.xml_tag('Sdimin', '200'))
+            xfa.append(self.xml_tag('sal2', '4600'))
+        else:
+            xfa.append(self.xml_tag('sal1', '4050'))
+            xfa.append(self.xml_tag('Sdimin', '300'))
+            xfa.append(self.xml_tag('sal2', '4300'))
         xfa.append(self.xml_tag('flag1', 'visible'))
         xfa.append(self.xml_tag('sal3', '4582'))
         xfa.append('</sfmButoane\n>')

@@ -23,6 +23,20 @@ app = FastAPI(
 # Template-uri PDF
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 D112_TEMPLATE = os.path.join(TEMPLATES_DIR, "D112_XML_2025_0825_191125.pdf")
+# 0726 (OpANAF 605/2026): template-ul nou pentru veniturile din iul-2026+
+D112_TEMPLATE_0726 = os.path.join(TEMPLATES_DIR, "D112_XML_2026_0726_170826.pdf")
+
+
+def _select_d112_template(xml_content: bytes) -> str:
+    """Alege template-ul D112 dupa perioada din XML (an_r/luna_r)."""
+    import re as _re
+    m_an = _re.search(rb'an_r="(\d{4})"', xml_content)
+    m_luna = _re.search(rb'luna_r="(\d{1,2})"', xml_content)
+    if m_an and m_luna:
+        an, luna = int(m_an.group(1)), int(m_luna.group(1))
+        if an > 2026 or (an == 2026 and luna >= 7):
+            return D112_TEMPLATE_0726
+    return D112_TEMPLATE
 D212_TEMPLATE = os.path.join(TEMPLATES_DIR, "dclUnica_2025-v1.0.6_08122025.pdf")
 D300_TEMPLATE = os.path.join(TEMPLATES_DIR, "D300_v11.0.7_16122025.pdf")
 D301_TEMPLATE = os.path.join(TEMPLATES_DIR, "D301_XML_2017_260320.pdf")
@@ -45,10 +59,11 @@ async def generate_d112(request: Request, attach_xml: bool = True):
     xml_content = await request.body()
     if not xml_content:
         raise HTTPException(status_code=400, detail="XML content is required")
-    if not os.path.exists(D112_TEMPLATE):
+    template = _select_d112_template(xml_content)
+    if not os.path.exists(template):
         raise HTTPException(status_code=500, detail="PDF template not found")
     try:
-        pdf_bytes = generate_d112_pdf(xml_content, D112_TEMPLATE, attach_xml)
+        pdf_bytes = generate_d112_pdf(xml_content, template, attach_xml)
         return Response(content=pdf_bytes, media_type="application/pdf",
                         headers={"Content-Disposition": "attachment; filename=D112.pdf"})
     except Exception as e:
